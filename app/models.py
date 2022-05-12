@@ -267,6 +267,7 @@ class GoalAction(db.Model):
         goal = self.goal
 
         if len(self.goal.actions.all()) == 1:
+            self.goal.actions.all()[0].unmark_as_complete()
             goal.unmark_as_complete()            
 
         self.goal.actions.remove(self)

@@ -44,7 +44,8 @@ def test_it_sets_correct_percentage_complete():
     user = User.query.first()
     goal = user.create_goal("SomeGoal")
     action_1 = goal.create_action("SomeAction")
-    action_2 = goal.create_subaction("SomeAction")
+    action_2 = goal.create_action("SomeAction")
     action_1.mark_as_complete()
+    action_2.unmark_as_complete()
 
     assert goal.percentage_complete == 50

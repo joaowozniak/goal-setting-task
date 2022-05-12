@@ -81,7 +81,7 @@ def view_goal(goal_id):
             if request.form["base_action_id"] == "_base":
                 # add base action
                 try:
-                    goal.create_action(text=request.form["new_action_text"])
+                    goal.create_action(text=request.form["new_action_text"])                    
                 except ValueError as ve:
                     return jsonify(
                         {
@@ -103,13 +103,14 @@ def view_goal(goal_id):
 
                 try:
                     base_action.create_subaction(text=request.form["new_action_text"])
+                    base_action.update_incomplete()
                 except ValueError as ve:
                     return jsonify(
                         {
                             "result": "error",
                             "message": "Invalid action - {}".format(str(ve)),
                         }
-                    )
+                    )                
 
             db.session.commit()
             return jsonify({"result": "ok"})
@@ -137,13 +138,39 @@ def view_goal(goal_id):
 
             # run task
             if task == "delete_action":
-                action.delete_action()
+                try:
+                    action.delete_action()  
+                except ValueError as ve:
+                    return jsonify(
+                        {
+                            "result": "error",
+                            "message": "Invalid action - {}".format(str(ve)),
+                        }
+                    )                               
 
             elif task == "mark_action_as_complete":
-                action.mark_as_complete()
+                try:
+                    action.mark_as_complete()
+                    action.update_complete()
+                except ValueError as ve:
+                    return jsonify(
+                        {
+                            "result": "error",
+                            "message": "Invalid action - {}".format(str(ve)),
+                        }
+                    )                
 
-            elif task == "unmark_action_as_complete":
-                action.unmark_as_complete()
+            elif task == "unmark_action_as_complete":                
+                try:
+                    action.unmark_as_complete()
+                    action.update_incomplete()
+                except ValueError as ve:
+                    return jsonify(
+                        {
+                            "result": "error",
+                            "message": "Invalid action - {}".format(str(ve)),
+                        }
+                    ) 
 
             db.session.commit()
             return jsonify({"result": "ok"})

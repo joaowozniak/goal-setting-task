@@ -65,16 +65,45 @@ class Goal(db.Model):
     def mark_as_complete(self):
         self.completed = datetime.datetime.utcnow()
 
+    def unmark_as_complete(self):
+        self.completed = None
+
     @property
     def base_actions(self):
         # fetch non-nested actions
         return self.actions.filter(GoalAction.parent_action_id == None)
 
-    # TODO - 2
     def refresh_percentage_complete(self):
-        # ...
-        self.percentage_complete = 0  # <-- insert result here
+
+        total_actions = 0
+        completed_actions = 0
+
+        for action in self.actions:
+            if not action.parent_action:
+                #print("Top level action found. Adding one to total actions...")
+                total_actions += 1
+
+                if action.completed != None:
+                    #print("Top level action completed. Adding one to completed actions...")
+                    completed_actions +=1
+
+                else:
+                    #print("Top level action incomplete. Search percentage of completeness...")
+                    completed_actions += action.calc_completeness_ptge()                    
+
+        if total_actions > 0 and total_actions >= completed_actions:
+            print("Completeness percentage: ", completed_actions*100/total_actions)        
+            self.percentage_complete = int(completed_actions*100/total_actions)
+        
+            if self.percentage_complete == 100 and completed_actions > 0: 
+                print("Goal completed!")
+                self.mark_as_complete() 
+            else: 
+                #print("Goal incomplete")
+                self.unmark_as_complete() 
+        
         return self.percentage_complete
+    
 
     def delete_goal(self):
         db.session.delete(self)
@@ -127,18 +156,122 @@ class GoalAction(db.Model):
 
     # TODO - 1
     def mark_as_complete(self):
-        self.completed = datetime.datetime.utcnow()
-        # ...
+        #print("***** Marking action completed *****")
 
-    # TODO - 1
-    def unmark_as_complete(self):
+        if self.child_actions:
+            #print(f"Found {len(self.child_actions)} subactions!")
+            for subaction in self.child_actions:
+                if subaction.completed == None:
+                    raise ValueError("You must complete every subaction")
+
+        #print("No subaction found, updating action status to completed...")
+        self.completed = datetime.datetime.utcnow() 
+
+    def update_complete(self):  
+
+        print(f"Action {self.text} completed!")      
+        if not self.parent_action:
+            pass
+            #print("No parent action found")
+        
+        elif len(self.parent_action.child_actions) > 1:
+            #print("Checking if parent action is completed...")
+            nr_brotheractions_completed = 1
+            for brotheraction in self.parent_action.child_actions:
+                
+                #print(brotheraction.text)
+                if brotheraction is not self:
+                    if brotheraction.completed != None:
+                        #print("Same level subaction found!")
+                        nr_brotheractions_completed += 1                        
+                    else:
+                        #print("There are same level subactions yet to complete.")
+                        pass                         
+                        
+            #print("Brother actions: ", nr_brotheractions_completed)
+            #print(len(self.parent_action.child_actions))
+            if nr_brotheractions_completed == len(self.parent_action.child_actions):
+                self.parent_action.completed = datetime.datetime.utcnow()
+                self.parent_action.update_complete()            
+
+        elif len(self.parent_action.child_actions) == 1:
+            #print("No other same level subactions found, parent action completed!")
+            self.parent_action.completed = datetime.datetime.utcnow()
+            self.parent_action.update_complete()
+        
+        self.goal.refresh_percentage_complete()
+    
+    def unmark_as_complete(self):    
+        #print("***** Unmarking completed action *****") 
+        nr_not_completed_actions = 0       
+
+        if self.child_actions:
+            #print(f"Found {len(self.child_actions)} subactions!")
+            for subaction in self.child_actions:                
+                if subaction.completed == None:
+                    #print("Not completed subaction found...")
+                    nr_not_completed_actions +=1
+            if nr_not_completed_actions == 0:
+                raise ValueError("You must unmark at least one subaction")
+
+            #print(f"Found {nr_not_completed_actions} not completed subactions, updating action status to incompleted...") 
+        else:             
+            #print(f"No subactions found, updating action {self.text} status to incomplete...") 
+            pass
+
         self.completed = None
-        # ...
+        self.goal.refresh_percentage_complete()
+
+    def update_incomplete(self):  
+
+        print(f"Action {self.text} incomplete!")      
+        if not self.parent_action:
+            #print(f"No parent action found. Action: {self.text} completness status is {self.completed}")
+            pass
+        
+        elif len(self.parent_action.child_actions) > 1:
+            #print("Checking if parent action is incomplete...")
+            for brotheraction in self.parent_action.child_actions:
+                if brotheraction is not self:
+                    if brotheraction.completed != None:
+                        #print("At least one subaction incomplete! Parent action is also incomplete!")
+                        self.parent_action.completed = None
+                        self.parent_action.update_incomplete()
+                    else:
+                        #print("All same level subactions completed.")
+                        pass
+
+        elif len(self.parent_action.child_actions) == 1:
+            #print("No other same level subactions found, parent action incomplete!")
+            self.parent_action.completed = None
+            self.parent_action.update_incomplete()
+        
+        self.goal.refresh_percentage_complete()
+
+    def calc_completeness_ptge(self):
+
+        total_actions = 0
+        completed_actions = 0
+
+        for child in self.child_actions:            
+            total_actions +=1
+            if child.completed != None:
+                completed_actions +=1
+            else: 
+                completed_actions += child.calc_completeness_ptge()
+
+        if total_actions == 0: return 0
+        else: return completed_actions/total_actions
 
     def delete_action(self):
         goal = self.goal
+
+        if len(self.goal.actions.all()) == 1:
+            goal.unmark_as_complete()            
+
         self.goal.actions.remove(self)
+
         # db.session.delete(self)
-        db.session.flush()  # in case refresh_percentage_complete uses further queries
+        db.session.flush()  # in case refresh_percentage_complete uses further queries        
 
         goal.refresh_percentage_complete()
